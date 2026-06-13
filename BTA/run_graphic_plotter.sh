@@ -1,0 +1,2 @@
+python3 graphic_plotter.py atmega
+python3 graphic_plotter.py riscure_pinata

@@ -1,0 +1,8 @@
+{
+    "Model": "LDA",
+    "Traces_to_GE0": 9,
+    "pca_components": null,
+    "lda_components": 3,
+    "operation": "SUM",
+    "delta": 0
+}
