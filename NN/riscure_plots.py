@@ -27,11 +27,11 @@ MAX_TRACES = 500
 
 # PESI PER IL CALCOLO DEL MIGLIOR MODELLO (Pareto)
 WEIGHTS = {
-    "traces": 0.50,
-    "attack_time": 0.15,
-    "train_time": 0.10,
-    "ram": 0.15,
-    "storage": 0.10
+    "traces": 0.30,
+    "attack_time": 0.175,
+    "train_time": 0.175,
+    "ram": 0.175,
+    "storage": 0.175
 }
 
 plt.rcParams.update({

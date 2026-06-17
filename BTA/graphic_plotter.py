@@ -1,24 +1,33 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import os
 import sys
 import json
-from math import pi, sin
-
-sys.path.insert(0, '../utils')
-from constants import BTA_METRICS_PATH_ATMEGA, BTA_METRICS_PATH_RISCURE_PINATA, PATH_PLOTS_ATMEGA, PATH_PLOTS_RISCURE_PINATA, MAX_TRACES, WEIGHT_GE
-
+import numpy as np
+import matplotlib.pyplot as plt
+from math import pi
 from pathlib import Path
 
+# Risolve l'errore ModuleNotFoundError trovando dinamicamente la cartella utils
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "utils"))
 os.chdir(PROJECT_ROOT)
 
+# Importiamo le costanti. Ho rimosso WEIGHT_GE perché useremo i pesi unificati
+from constants import BTA_METRICS_PATH_ATMEGA, BTA_METRICS_PATH_RISCURE_PINATA, PATH_PLOTS_ATMEGA, PATH_PLOTS_RISCURE_PINATA, MAX_TRACES
+
 # ==========================================
-# CONFIGURAZIONI GLOBALI
+# CONFIGURAZIONI GLOBALI E PESI (Allineati con NN)
 # ==========================================
 features_choice = ['PCA_', 'LDA_', 'PCA_LDA_', 'PCA_HW_', 'LDA_HW_', 'PCA_LDA_HW_']
 operations = ['SUM']
 end_base = "_metrics.json"
+
+WEIGHTS = {
+    "traces": 0.30,
+    "attack_time": 0.175,
+    "train_time": 0.175,
+    "ram": 0.175,
+    "storage": 0.175
+}
 
 def get_color(f_c):
     base_colors = {'PCA': '#1f77b4', 'LDA': '#ff7f0e', 'PCA LDA': '#2ca02c', 
@@ -26,7 +35,7 @@ def get_color(f_c):
     return base_colors.get(f_c, 'gray')
 
 # ==========================================
-# 1. TEMPI COMPUTAZIONALI (ALL-IN-ONE)
+# 1. TEMPI COMPUTAZIONALI
 # ==========================================
 def plot_all_times(experiment_data, features_choice, results_path):
     models, train_times, attack_times = [], [], []
@@ -124,7 +133,7 @@ def plot_grouped_metric(experiment_data, metric_key, title, ylabel, results_path
     plt.close()
 
 # ==========================================
-# 3. RAM E STORAGE (ALL-IN-ONE)
+# 3. RAM E STORAGE
 # ==========================================
 def plot_all_ram(experiment_data, features_choice, results_path):
     models, train_ram, attack_ram = [], [], []
@@ -191,7 +200,7 @@ def plot_all_storage(experiment_data, features_choice, results_path):
     plt.close()
 
 # ==========================================
-# 4. GRAFICI TRACCE (GE < 0.5) E SCATTER TRADEOFF
+# 4. TRACCE E GE CURVES
 # ==========================================
 def plot_all_traces(experiment_data, features_choice, results_path):
     models, traces, colors = [], [], []
@@ -200,7 +209,7 @@ def plot_all_traces(experiment_data, features_choice, results_path):
         if dict_key in experiment_data:
             clean_name = f_c.replace('_', ' ').strip().upper()
             models.append(clean_name)
-            val = min(experiment_data[dict_key]['GE_crossing_point'], MAX_TRACES) # Cap al MAX_TRACES
+            val = min(experiment_data[dict_key]['GE_crossing_point'], MAX_TRACES)
             traces.append(val)
             colors.append(get_color(clean_name))
 
@@ -230,50 +239,6 @@ def plot_all_traces(experiment_data, features_choice, results_path):
     plt.savefig(os.path.join(out_dir, "Traces_Comparison_All.png"), dpi=300)
     plt.close()
 
-def plot_all_tradeoff(experiment_data, features_choice, results_path):
-    plt.figure(figsize=(10, 7))
-    plotted_any = False
-    
-    for f_c in features_choice:
-        dict_key = f"{f_c}SUM"
-        if dict_key in experiment_data:
-            x_val = min(experiment_data[dict_key]['GE_crossing_point'], MAX_TRACES) # Cap al MAX_TRACES
-            y_val = experiment_data[dict_key]['Attack_time']
-            clean_name = f_c.replace('_', ' ').strip().upper()
-            color = get_color(clean_name)
-
-            if x_val >= MAX_TRACES:
-                plt.scatter(MAX_TRACES, y_val, color=color, marker='X', s=200, edgecolor='black', zorder=5)
-                plt.annotate(f"{clean_name}\n(Failed)", (MAX_TRACES, y_val), textcoords="offset points", 
-                             xytext=(-15, 5), ha='right', fontsize=9, color='gray')
-            else:
-                plt.scatter(x_val, y_val, color=color, marker='o', s=150, edgecolor='black', zorder=5)
-                plt.annotate(clean_name, (x_val, y_val), textcoords="offset points", 
-                             xytext=(10, 5), ha='left', fontsize=10, fontweight='bold', color=color)
-            plotted_any = True
-
-    if not plotted_any: return
-    
-    plt.axvline(x=MAX_TRACES, color='red', linestyle='--', alpha=0.5, label=f'Trace Limit ({MAX_TRACES})')
-    
-    # Area verde pesata: se WEIGHT_GE è alto, l'area ottimale accetta meno tracce ma è più tollerante col tempo
-    opt_traces = MAX_TRACES * (1.0 - WEIGHT_GE) 
-    plt.axvspan(0, opt_traces, ymin=0, ymax=0.4, color='green', alpha=0.05, label=f'Optimal Zone (Weighted {WEIGHT_GE*100:.0f}% GE)')
-    
-    plt.xlabel('Data Complexity: Traces to GE < 0.5', fontsize=12, fontweight='bold')
-    plt.ylabel('Time Complexity: Attack Time (Seconds)', fontsize=12, fontweight='bold')
-    plt.title('Attack Efficiency Trade-Off (Weighted)', fontsize=15)
-    plt.xlim(0, MAX_TRACES * 1.05)
-    plt.grid(True, linestyle=':', alpha=0.7)
-    
-    out_dir = os.path.join(results_path, "TRADE_OFF")
-    os.makedirs(out_dir, exist_ok=True)
-    plt.savefig(os.path.join(out_dir, "Scatter_TradeOff_All.png"), dpi=300, bbox_inches='tight')
-    plt.close()
-
-# ==========================================
-# 5. GE CURVES (FILTRATO GE < MAX_TRACES)
-# ==========================================
 def plot_all_ge_curves(experiment_data, features_choice, results_path):
     plt.figure(figsize=(12, 7))
     plotted_any = False
@@ -282,11 +247,8 @@ def plot_all_ge_curves(experiment_data, features_choice, results_path):
         dict_key = f"{f_c}SUM"
         if dict_key in experiment_data:
             cp = experiment_data[dict_key]['GE_crossing_point']
-            
-            if cp >= MAX_TRACES:
-                continue 
-
-            ge_curve = experiment_data[dict_key]['GE_curve'][:MAX_TRACES] # Taglia la curva a MAX_TRACES
+            if cp >= MAX_TRACES: continue 
+            ge_curve = experiment_data[dict_key]['GE_curve'][:MAX_TRACES]
             clean_name = f_c.replace('_', ' ').strip().upper()
             
             plt.plot(ge_curve, label=f"{clean_name} | GE < 0.5: {int(cp)}", 
@@ -308,90 +270,100 @@ def plot_all_ge_curves(experiment_data, features_choice, results_path):
     plt.close()
 
 # ==========================================
-# 6. RADAR CHART PARETO (PESATO CON FLOOR)
+# 5. MATEMATICA E RADAR CHART (Identica alle NN)
 # ==========================================
+def normalize_cost(values):
+    vals = np.array(values, dtype=float)
+    if len(vals) == 0: return vals
+    min_v, max_v = np.min(vals), np.max(vals)
+    if max_v == min_v: return np.ones_like(vals) if max_v > 0 else np.zeros_like(vals)
+    return (vals - min_v) / (max_v - min_v)
+
+def calculate_polygon_area(values):
+    N = len(values)
+    angle = 2 * pi / N
+    area = sum(0.5 * values[i] * values[(i + 1) % N] * np.sin(angle) for i in range(N))
+    max_area = (N / 2) * np.sin(angle)
+    return area / max_area
+
 def plot_all_radar_chart(experiment_data, features_choice, results_path):
-    categories = ['Traces (GE<0.5)', 'Attack Time', 'Training Time', 'Peak Attack RAM', 'Storage Size']
-    N = len(categories)
-    angles = [n / float(N) * 2 * pi for n in range(N)]
-    angles += angles[:1] 
-
-    # Calcolo pesi dinamici
-    rem_weight = (1.0 - WEIGHT_GE) / (N - 1)
-    weights = [WEIGHT_GE, rem_weight, rem_weight, rem_weight, rem_weight]
-
-    raw_data = {}
-    color_mapping = {}
-
+    models_data = []
+    
     for f_c in features_choice:
         dict_key = f"{f_c}SUM"
         if dict_key in experiment_data:
             cp = min(experiment_data[dict_key]['GE_crossing_point'], MAX_TRACES)
-            
             if cp >= MAX_TRACES:
                 continue
 
             clean_name = f_c.replace('_', ' ').strip().upper()
-            raw_data[clean_name] = [
-                cp,
-                experiment_data[dict_key]['Attack_time'],
-                experiment_data[dict_key]['Training_time'],
-                experiment_data[dict_key]['Attack_RAM_usage'],
-                experiment_data[dict_key]['Storage_size']
-            ]
-            color_mapping[clean_name] = get_color(clean_name)
+            
+            # Estrazione metriche (Stesso formato delle NN)
+            # Nota: converto storage in MB per matchare le NN
+            models_data.append({
+                'id': clean_name,
+                'traces': cp,
+                'attack_time': experiment_data[dict_key]['Attack_time'],
+                'train_time': experiment_data[dict_key]['Training_time'],
+                'attack_ram': experiment_data[dict_key]['Attack_RAM_usage'],
+                'train_ram': experiment_data[dict_key]['Training_RAM_usage'],
+                'storage': experiment_data[dict_key]['Storage_size'] / (1024.0 * 1024.0) 
+            })
 
-    if not raw_data: return
+    if not models_data: return
 
-    all_values = np.array(list(raw_data.values()))
-    mins = all_values.min(axis=0)
-    maxs = all_values.max(axis=0)
-    ranges = maxs - mins
-    ranges[ranges == 0] = 1e-10 
+    # Calcolo punteggi e normalizzazione (Esattamente come NN)
+    traces = [m['traces'] for m in models_data]
+    a_times = [m['attack_time'] for m in models_data]
+    t_times = [m['train_time'] for m in models_data]
+    max_rams = [max(m['attack_ram'], m['train_ram']) for m in models_data]
+    storages = [m['storage'] for m in models_data]
 
-    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(polar=True))
-    
-    weighted_categories = [f"{cat}\n({w*100:.0f}%)" for cat, w in zip(categories, weights)]
-    plt.xticks(angles[:-1], weighted_categories, fontsize=11, fontweight='bold')
-    
+    c_traces = normalize_cost(traces)
+    c_atime = normalize_cost(a_times)
+    c_ttime = normalize_cost(t_times)
+    c_ram = normalize_cost(max_rams)
+    c_storage = normalize_cost(storages)
+
+    for i, m in enumerate(models_data):
+        m['radar_data'] = [c_traces[i], c_atime[i], c_ttime[i], c_ram[i], c_storage[i]]
+        m['area'] = calculate_polygon_area(m['radar_data'])
+        
+    models_data = sorted(models_data, key=lambda x: x['area'])
+
+    # Disegno grafico (Esattamente come NN)
+    categories = ['Traces\n(GE<0.5)', 'Attack Time', 'Train Time', 'Peak RAM', 'Storage']
+    N = len(categories)
+    angles = [n / float(N) * 2 * pi for n in range(N)]
+    angles += angles[:1]
+
+    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
+    ax.set_theta_offset(pi / 2)
+    ax.set_theta_direction(-1)
+
+    plt.xticks(angles[:-1], categories, size=11, fontweight='bold')
     ax.set_rlabel_position(0)
-    plt.yticks([0.2, 0.4, 0.6, 0.8, 1.0], ["0.2", "0.4", "0.6", "0.8", "Max"], color="grey", size=9)
-    plt.ylim(0, 1.1) 
+    plt.yticks([0.25, 0.5, 0.75, 1.0], ["", "", "", "Pessimo\n(Costo Max)"], color="red", size=10, alpha=0.7)
+    ax.text(0, 0, 'Ottimo\n(Costo Min)', horizontalalignment='center', verticalalignment='center', size=10, color='green', fontweight='bold')
+    plt.ylim(0, 1.05)
 
-    plot_elements = []
+    for i, m in enumerate(models_data):
+        values = m['radar_data'][:]
+        values.append(values[0])
+        label_text = f"{m['id']} (Area: {m['area']:.3f})"
+        c = get_color(m['id'])
+        
+        ax.plot(angles, values, linewidth=2.5, linestyle='solid', label=label_text, color=c)
+        ax.fill(angles, values, color=c, alpha=0.15)
+
+    plt.title(f"5D Pareto Analysis: BTA Models\n(L'area MINORE indica prestazioni MIGLIORI)", size=15, y=1.12)
+    plt.legend(loc='upper right', bbox_to_anchor=(1.35, 1.1))
+    plt.tight_layout()
     
-    for model_name, values in raw_data.items():
-        norm_vals = (values - mins) / ranges
-        
-        # AGGIUNTA FLOOR (0.1) per evitare che i modelli perfetti (0) scompaiano
-        # Comprime i valori nell'intervallo [0.1, 1.0] anziché [0.0, 1.0]
-        norm_vals = 0.1 + (norm_vals * 0.9)
-
-        # APPLICAZIONE DEI PESI
-        weighted_vals = norm_vals * np.array(weights) * N 
-        weighted_vals = np.append(weighted_vals, weighted_vals[0])
-        
-        area = 0.5 * sin(2 * pi / N) * sum(weighted_vals[j] * weighted_vals[j+1] for j in range(N))
-        
-        c = color_mapping[model_name]
-        
-        line, = ax.plot(angles, weighted_vals, linewidth=2.5, linestyle='-', color=c)
-        ax.fill(angles, weighted_vals, color=c, alpha=0.1)
-        
-        label_text = f"{model_name} (W. Area: {area:.2f})"
-        plot_elements.append((area, line, label_text))
-
-    plot_elements.sort(key=lambda x: x[0])
-    sorted_lines = [item[1] for item in plot_elements]
-    sorted_labels = [item[2] for item in plot_elements]
-
-    plt.title(f'5D Pareto Efficiency (Weighted {WEIGHT_GE*100:.0f}% Traces)\n(Smaller Area = Better Overall Efficiency)', size=16, y=1.1, fontweight='bold')
-    plt.legend(sorted_lines, sorted_labels, loc='upper right', bbox_to_anchor=(1.35, 1.1), title="Ranked by Efficiency")
-
     out_dir = os.path.join(results_path, "RADAR")
     os.makedirs(out_dir, exist_ok=True)
     plt.savefig(os.path.join(out_dir, "Radar_Pareto_Successful_Only.png"), dpi=300, bbox_inches='tight')
-    plt.close()
+    plt.close(fig)
 
 # ==========================================
 # ESECUZIONE PRINCIPALE
@@ -399,8 +371,7 @@ def plot_all_radar_chart(experiment_data, features_choice, results_path):
 def generate_graphs(metrics_path, results_path):
     print(f"[*] Lettura metriche da: {metrics_path}")
     print(f"[*] Salvataggio grafici in: {results_path}")
-    print(f"[*] Limite Tracce (MAX_TRACES): {MAX_TRACES}")
-    print(f"[*] Peso Guessing Entropy (WEIGHT_GE): {WEIGHT_GE*100:.0f}%\n")
+    print(f"[*] Limite Traces: {MAX_TRACES}\n")
 
     experiment_data = {}
     
@@ -429,16 +400,15 @@ def generate_graphs(metrics_path, results_path):
     plot_all_times(experiment_data, features_choice, results_path)
     plot_all_ram(experiment_data, features_choice, results_path)
     plot_all_storage(experiment_data, features_choice, results_path)
-    plot_all_tradeoff(experiment_data, features_choice, results_path)
     
     plot_all_ge_curves(experiment_data, features_choice, results_path)
     plot_all_radar_chart(experiment_data, features_choice, results_path)
         
-    print("\n[*] Tutti i grafici generati con successo!")
+    print("\n[*] Tutti i grafici BTA generati con successo!")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Uso: python3 plot_generator.py [atmega|riscure_pinata]")
+        print("Uso: python3 BTA/graphic_plotter.py [atmega|riscure_pinata]")
         sys.exit(1)
 
     dev = sys.argv[1]
