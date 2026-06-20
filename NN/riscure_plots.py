@@ -128,11 +128,18 @@ def normalize_cost(values):
     return (vals - min_v) / (max_v - min_v)
 
 def calculate_polygon_area(values):
+    # w_i corrispondenti all'ordine: traces (0.30), attack_time (0.175), train_time (0.175), ram (0.175), storage (0.175)
+    w = [0.60, 0.1, 0.1, 0.1, 0.1]
     N = len(values)
     angle = 2 * pi / N
-    area = sum(0.5 * values[i] * values[(i + 1) % N] * np.sin(angle) for i in range(N))
-    max_area = (N / 2) * np.sin(angle)
-    return area / max_area
+    
+    # Applica il peso specifico w_i a ciascuno spicchio triangolare del radar
+    weighted_area = sum(w[i] * (0.5 * values[i] * values[(i + 1) % N] * np.sin(angle)) for i in range(N))
+    
+    # Normalizzazione rispetto all'area massima teorica pesata (quando tutti i costi sono a 1.0)
+    max_weighted_area = sum(w[i] * (0.5 * 1.0 * 1.0 * np.sin(angle)) for i in range(N))
+    
+    return weighted_area / max_weighted_area
 
 def calculate_scores(models_data):
     if not models_data: return []

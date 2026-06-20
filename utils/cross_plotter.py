@@ -7,21 +7,34 @@ from math import pi
 from pathlib import Path
 
 # ==========================================
-# 1. SETUP PATHS
+# 1. SETUP PATHS & DEVICE ARGUMENT
 # ==========================================
+if len(sys.argv) < 2:
+    print("[!] Errore: Devi specificare il target.")
+    print("Uso: python3 utils/cross_plotter.py [atmega | riscure_pinata]")
+    sys.exit(1)
+
+DEVICE = sys.argv[1]
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 os.chdir(PROJECT_ROOT)
 sys.path.insert(0, "./utils")
 
 try:
-    from constants import BTA_METRICS_PATH_RISCURE_PINATA, PATH_PLOTS_RISCURE_PINATA, MAX_TRACES
+    from constants import MAX_TRACES
+    if DEVICE == "atmega":
+        from constants import BTA_METRICS_PATH_ATMEGA as BTA_METRICS_PATH
+        from constants import PATH_PLOTS_ATMEGA as PATH_PLOTS
+    else:
+        from constants import BTA_METRICS_PATH_RISCURE_PINATA as BTA_METRICS_PATH
+        from constants import PATH_PLOTS_RISCURE_PINATA as PATH_PLOTS
 except ImportError:
-    BTA_METRICS_PATH_RISCURE_PINATA = "BTA/metrics/riscure_pinata"
-    PATH_PLOTS_RISCURE_PINATA = "plots/riscure_pinata/"
+    # Fallback se non trova il file constants.py
+    BTA_METRICS_PATH = f"BTA/metrics/{DEVICE}"
+    PATH_PLOTS = f"plots/{DEVICE}/"
     MAX_TRACES = 500
 
-DEVICE = "riscure_pinata"
-OUT_DIR = os.path.join(PATH_PLOTS_RISCURE_PINATA, "Ultimate_Showdown")
+OUT_DIR = os.path.join(PATH_PLOTS, "Ultimate_Showdown")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # Aesthetics
@@ -67,16 +80,17 @@ def normalize_cost(values):
     else:
         norm_vals = (vals - min_v) / (max_v - min_v)
         
-    # AGGIUNTA FLOOR: comprime l'intervallo da [0.0, 1.0] a [0.1, 1.0]
-    # In questo modo il modello "perfetto" non scompare al centro (0.0) nel radar
     return 0.1 + (norm_vals * 0.9)
 
 def calculate_polygon_area(values):
+    w = [0.60, 0.1, 0.1, 0.1, 0.1]
     N = len(values)
     angle = 2 * pi / N
-    area = sum(0.5 * values[i] * values[(i + 1) % N] * np.sin(angle) for i in range(N))
-    max_area = (N / 2) * np.sin(angle)
-    return area / max_area
+    
+    weighted_area = sum(w[i] * (0.5 * values[i] * values[(i + 1) % N] * np.sin(angle)) for i in range(N))
+    max_weighted_area = sum(w[i] * (0.5 * 1.0 * 1.0 * np.sin(angle)) for i in range(N))
+    
+    return weighted_area / max_weighted_area
 
 def get_champions_by_traces(models_data):
     if not models_data: return []
@@ -108,12 +122,11 @@ def extract_bta_models():
     
     for f_c in features_choice:
         for op in operations:
-            filepath = os.path.join(BTA_METRICS_PATH_RISCURE_PINATA, f"{f_c}{op}_metrics.json")
+            filepath = os.path.join(BTA_METRICS_PATH, f"{f_c}{op}_metrics.json")
             if os.path.exists(filepath):
                 with open(filepath, 'r') as f:
                     d = json.load(f)
                     
-                    # Fix automatico se la RAM del BTA è in bytes
                     a_ram = d['Attack_RAM_usage']
                     t_ram = d['Training_RAM_usage']
                     if a_ram > 10000: a_ram /= (1024.0 * 1024.0)
@@ -128,7 +141,7 @@ def extract_bta_models():
                         "attack_ram": a_ram,
                         "train_ram": t_ram,
                         "storage": d['Storage_size'] / 1024.0,
-                        "ge_curve": d.get('GE_curve', []) # Estraggo la curva GE dal JSON
+                        "ge_curve": d.get('GE_curve', [])
                     })
     return models
 
@@ -142,7 +155,6 @@ def extract_nn_models(arch):
         train_dir = Path(str(ge_path.parent).replace("ATTACK", "TRAINING"))
         attack_dir = ge_path.parent
         
-        # Ricerca SUPER ROBUSTA ignorando maiuscole/minuscole
         def get_val(directory, keyword):
             if not directory.exists(): return 0.0
             for f in directory.rglob("*.txt"):
@@ -181,7 +193,7 @@ def extract_nn_models(arch):
             "attack_ram": attack_ram,
             "train_ram": train_ram,
             "storage": storage,
-            "ge_curve": ge # Estraggo l'array GE dal CSV
+            "ge_curve": ge 
         })
     return models
 
@@ -200,9 +212,7 @@ def plot_ge_evolution_line(models, title, filename):
             lbl_id = m['family']
             lbl = f"{lbl_id} Champion (Break: {bp})" if bp < MAX_TRACES else f"{lbl_id} Champion (> {MAX_TRACES})"
             
-            # Taglia l'array fino a MAX_TRACES per coerenza visiva
             ge_plot = ge[:MAX_TRACES]
-            
             ax.plot(np.arange(1, len(ge_plot)+1), ge_plot, color=COLORS[m['family']], linewidth=2.5, label=lbl)
 
     if valid_plots == 0:
@@ -216,7 +226,6 @@ def plot_ge_evolution_line(models, title, filename):
     ax.set_xlabel("Number of Traces", fontweight='bold')
     ax.set_ylabel("Guessing Entropy", fontweight='bold')
     
-    # Imposta dinamicamente il limite Y per non tagliare le curve
     max_y = 130
     for m in models:
         ge = m.get('ge_curve', [])
@@ -306,7 +315,7 @@ def plot_ultimate_radar(models):
         ax.plot(angles, radar_data, linewidth=3.0, linestyle='solid', label=label_text, color=c)
         ax.fill(angles, radar_data, color=c, alpha=0.15)
 
-    plt.title("Ultimate Showdown: 5D Pareto Comparison\n(Ranked internally across Best Trace Models)", size=16, y=1.1, fontweight='bold')
+    plt.title(f"Ultimate Showdown: 5D Pareto Comparison ({DEVICE.upper()})\n(Ranked internally across Best Trace Models)", size=16, y=1.1, fontweight='bold')
     plt.legend(loc='upper right', bbox_to_anchor=(1.35, 1.1))
     plt.tight_layout()
     fig.savefig(os.path.join(OUT_DIR, "Ultimate_Showdown_Radar.png"), dpi=300, bbox_inches='tight')
@@ -316,7 +325,7 @@ def plot_ultimate_radar(models):
 # 5. MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    print("[*] Extracting models...")
+    print(f"[*] Extracting models for target: {DEVICE.upper()}...")
     all_bta = extract_bta_models()
     all_mlp = extract_nn_models("MLP")
     all_cnn = extract_nn_models("CNN_ZAID")
@@ -336,14 +345,12 @@ if __name__ == "__main__":
 
     print("\n[*] Generating Comparison Plots...")
     
-    # Aggiunto il grafico a linee della GE
-    plot_ge_evolution_line(champions, "Guessing Entropy Evolution (Champions)", "Showdown_GE_Evolution.png")
-    
-    plot_comparison_bar(champions, "traces", "Minimum Traces (GE<0.5)", "Data Complexity Comparison", "Showdown_Traces.png")
-    plot_comparison_bar(champions, "train_time", "Time (Seconds, Log Scale)", "Training Time Comparison", "Showdown_TrainTime.png", log_scale=True)
-    plot_comparison_bar(champions, "attack_time", "Time (Seconds)", "Attack (Inference) Time Comparison", "Showdown_AttackTime.png")
-    plot_comparison_bar(champions, "max_ram", "RAM (MB, Log Scale)", "Peak RAM Usage Comparison", "Showdown_PeakRAM.png", log_scale=True)
-    plot_comparison_bar(champions, "storage", "File Size (KB, Log Scale)", "Model Storage Size Comparison", "Showdown_Storage.png", log_scale=True)
+    plot_ge_evolution_line(champions, f"Guessing Entropy Evolution (Champions - {DEVICE.upper()})", "Showdown_GE_Evolution.png")
+    plot_comparison_bar(champions, "traces", "Minimum Traces (GE<0.5)", f"Data Complexity Comparison ({DEVICE.upper()})", "Showdown_Traces.png")
+    plot_comparison_bar(champions, "train_time", "Time (Seconds, Log Scale)", f"Training Time Comparison ({DEVICE.upper()})", "Showdown_TrainTime.png", log_scale=True)
+    plot_comparison_bar(champions, "attack_time", "Time (Seconds)", f"Attack (Inference) Time Comparison ({DEVICE.upper()})", "Showdown_AttackTime.png")
+    plot_comparison_bar(champions, "max_ram", "RAM (MB, Log Scale)", f"Peak RAM Usage Comparison ({DEVICE.upper()})", "Showdown_PeakRAM.png", log_scale=True)
+    plot_comparison_bar(champions, "storage", "File Size (KB, Log Scale)", f"Model Storage Size Comparison ({DEVICE.upper()})", "Showdown_Storage.png", log_scale=True)
 
     plot_ultimate_radar(champions)
     print(f"[*] All plots saved successfully in: {OUT_DIR}")

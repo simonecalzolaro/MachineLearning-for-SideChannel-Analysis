@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from math import pi
 from pathlib import Path
 
-from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 os.chdir(PROJECT_ROOT)
 
@@ -23,7 +22,10 @@ ARCHS = ["CNN_ZAID", "MLP", "MLP_PRE"]
 TARGETS = ["HW_SO", "SBOX_OUT"]
 OUT_MODES = ["categorical", "binary"] 
 PTX_MODES = ["none", "scalar", "binary"]
-MAX_TRACES = 500
+
+# Modifica dei limiti per vedere la convergenza asintotica
+PRACTICAL_LIMIT = 500
+ANALYTICAL_HORIZON = 9000
 
 # PESI PER IL CALCOLO DEL MIGLIOR MODELLO (Pareto)
 WEIGHTS = {
@@ -36,7 +38,7 @@ WEIGHTS = {
 
 plt.rcParams.update({
     'font.size': 11, 'axes.labelsize': 13, 'axes.titlesize': 15,
-    'legend.fontsize': 11, 'figure.figsize': (16, 7), # Allargato per ospitare 9 barre comode
+    'legend.fontsize': 11, 'figure.figsize': (16, 7), 
     'axes.grid': True, 'grid.alpha': 0.3, 'grid.linestyle': '--'
 })
 
@@ -51,15 +53,10 @@ def get_out_dir(arch, metric=""):
     return d
 
 def get_all_paths(arch, target, out_mode, ptx_mode):
-    """
-    Entra nella cartella e cerca i file in base all'estensione/suffisso,
-    ignorando il prefisso esatto per evitare file non trovati.
-    """
     folder = f"fixed_key_{out_mode}_out_{ptx_mode}_ptx"
     attack_dir = os.path.join("NN", arch, DEVICE, "ATTACK", target, folder)
     train_dir = os.path.join("NN", arch, DEVICE, "TRAINING", target, folder)
     
-    # Se la cartella non esiste (es. HW_SO_binary_out), skippa
     if not os.path.exists(attack_dir) or not os.path.exists(train_dir):
         return None
 
@@ -79,16 +76,16 @@ def get_all_paths(arch, target, out_mode, ptx_mode):
         "attack_ram": find_file(attack_dir, "_attack_ram.txt"),
         "train_time": find_file(train_dir, "_training_time.txt"),
         "train_ram": find_file(train_dir, "_training_ram.txt"),
-        "model": find_file(train_dir, ".h5") # Prende qualsiasi file .h5
+        "model": find_file(train_dir, ".h5")
     }
 
-def read_ge(path, max_traces=MAX_TRACES):
+def read_ge(path, max_traces=ANALYTICAL_HORIZON):
     if path and os.path.exists(path): return np.loadtxt(path, delimiter=',')[:max_traces]
     return None
 
-def get_break_point(ge_array, threshold=0.5):
+def get_break_point(ge_array, threshold=0.5, max_traces=ANALYTICAL_HORIZON):
     coords = np.where(ge_array <= threshold)[0]
-    return coords[0] + 1 if len(coords) > 0 else MAX_TRACES
+    return coords[0] + 1 if len(coords) > 0 else max_traces
 
 def read_metric_txt(path):
     if path and os.path.exists(path):
@@ -104,9 +101,9 @@ def get_file_size_mb(path):
 
 def extract_all_metrics(arch, target, out_mode, ptx):
     paths = get_all_paths(arch, target, out_mode, ptx)
-    if not paths: return None # Skippa se la cartella o i file mancano
+    if not paths: return None 
     
-    ge = read_ge(paths["ge"])
+    ge = read_ge(paths["ge"], max_traces=ANALYTICAL_HORIZON)
     if ge is None: return None
     
     label_id = f"{arch}\n{target}\nOut: {out_mode}\nPTX: {ptx}"
@@ -114,7 +111,7 @@ def extract_all_metrics(arch, target, out_mode, ptx):
     return {
         "id": label_id,
         "ge_path": paths["ge"],
-        "traces": get_break_point(ge),
+        "traces": get_break_point(ge, max_traces=ANALYTICAL_HORIZON),
         "attack_time": read_metric_txt(paths["attack_time"]),
         "train_time": read_metric_txt(paths["train_time"]),
         "attack_ram": read_metric_txt(paths["attack_ram"]),
@@ -129,15 +126,23 @@ def normalize_cost(values):
     vals = np.array(values, dtype=float)
     if len(vals) == 0: return vals
     min_v, max_v = np.min(vals), np.max(vals)
-    if max_v == min_v: return np.ones_like(vals) if max_v > 0 else np.zeros_like(vals)
-    return (vals - min_v) / (max_v - min_v)
+    
+    if max_v == min_v: 
+        norm_vals = np.ones_like(vals) if max_v > 0 else np.zeros_like(vals)
+    else:
+        norm_vals = (vals - min_v) / (max_v - min_v)
+        
+    return 0.1 + (norm_vals * 0.9) # Evita che l'ottimo diventi area zero
 
 def calculate_polygon_area(values):
+    w = [0.60, 0.1, 0.1, 0.1, 0.1]
     N = len(values)
     angle = 2 * pi / N
-    area = sum(0.5 * values[i] * values[(i + 1) % N] * np.sin(angle) for i in range(N))
-    max_area = (N / 2) * np.sin(angle)
-    return area / max_area
+    
+    weighted_area = sum(w[i] * (0.5 * values[i] * values[(i + 1) % N] * np.sin(angle)) for i in range(N))
+    max_weighted_area = sum(w[i] * (0.5 * 1.0 * 1.0 * np.sin(angle)) for i in range(N))
+    
+    return weighted_area / max_weighted_area
 
 def calculate_scores(models_data):
     if not models_data: return []
@@ -158,7 +163,8 @@ def calculate_scores(models_data):
         m['radar_data'] = [c_traces[i], c_atime[i], c_ttime[i], c_ram[i], c_storage[i]]
         m['area'] = calculate_polygon_area(m['radar_data'])
         
-    return sorted(models_data, key=lambda x: x['area'])
+    # Ordina prima per tracce (capacità crittografica reale) poi per inefficienza geometrica
+    return sorted(models_data, key=lambda x: (x['traces'], x['area']))
 
 def plot_radar_chart(models_data, title, out_path):
     if not models_data: return
@@ -173,19 +179,19 @@ def plot_radar_chart(models_data, title, out_path):
 
     plt.xticks(angles[:-1], categories, size=11, fontweight='bold')
     ax.set_rlabel_position(0)
-    plt.yticks([0.25, 0.5, 0.75, 1.0], ["", "", "", "Pessimo\n(Costo Max)"], color="red", size=10, alpha=0.7)
-    ax.text(0, 0, 'Ottimo\n(Costo Min)', horizontalalignment='center', verticalalignment='center', size=10, color='green', fontweight='bold')
+    plt.yticks([0.25, 0.5, 0.75, 1.0], ["", "", "", "Worst\n(Max Cost)"], color="red", size=10, alpha=0.7)
+    ax.text(0, 0, 'Best\n(Min Cost)', horizontalalignment='center', verticalalignment='center', size=10, color='green', fontweight='bold')
     plt.ylim(0, 1.05)
 
     top_models = models_data[:3]
     for i, m in enumerate(top_models):
-        values = m['radar_data']
-        values += values[:1]
+        values = m['radar_data'].copy()
+        values.append(values[0])
         label_text = f"{m['id'].replace(chr(10), ' ')} (Area: {m['area']:.3f})"
         ax.plot(angles, values, linewidth=2.5, linestyle='solid', label=label_text, color=COLORS[i])
         ax.fill(angles, values, color=COLORS[i], alpha=0.15)
 
-    plt.title(f"{title}\n(L'area MINORE indica prestazioni MIGLIORI)", size=15, y=1.12)
+    plt.title(f"{title}\n(Smaller area = Better Efficiency $\Omega$)", size=15, y=1.12)
     plt.legend(loc='upper right', bbox_to_anchor=(1.35, 1.1))
     plt.tight_layout()
     fig.savefig(out_path, dpi=300)
@@ -199,25 +205,24 @@ def plot_unified_bar(models_data, metric_key, ylabel, title, out_path, color):
     labels = [m['id'] for m in models_data]
     vals = [m[metric_key] for m in models_data]
 
-    # Dinamico: se ci sono 9 barre, allarghiamo un po' la figura per fare spazio ai nomi
     fig, ax = plt.subplots(figsize=(min(20, max(12, len(labels)*1.8)), 7))
     bars = ax.bar(labels, vals, color=color, edgecolor='black', linewidth=1.2)
     
     ax.set_ylabel(ylabel)
     ax.set_title(title)
     
-    for bar in bars:
+    for bar, val in zip(bars, vals):
         yval = bar.get_height()
-        if 'traces' in metric_key and yval >= MAX_TRACES:
-            ax.text(bar.get_x() + bar.get_width()/2, yval*1.02, f'>{MAX_TRACES}', ha='center', va='bottom', color='red', fontweight='bold')
+        if 'traces' in metric_key and val >= ANALYTICAL_HORIZON:
+            ax.text(bar.get_x() + bar.get_width()/2, yval*1.02, "Not\nBreaked", ha='center', va='bottom', color='red', fontweight='bold')
         else:
             fmt = '{:.0f}' if 'traces' in metric_key else '{:.2f}'
-            ax.text(bar.get_x() + bar.get_width()/2, yval*1.02, fmt.format(yval), ha='center', va='bottom', fontsize=10)
+            ax.text(bar.get_x() + bar.get_width()/2, yval*1.02, fmt.format(yval), ha='center', va='bottom', fontsize=10, fontweight='bold')
 
     if 'traces' in metric_key:
-        ax.axhline(MAX_TRACES, color='red', linestyle='--', label=f'Max Limit ({MAX_TRACES})')
+        ax.axhline(PRACTICAL_LIMIT, color='red', linestyle='--', linewidth=2, label=f'Practical Auditing Limit ({PRACTICAL_LIMIT})')
         ax.legend()
-        ax.set_ylim(0, MAX_TRACES * 1.15)
+        ax.set_ylim(0, max(max(vals) * 1.15, PRACTICAL_LIMIT * 1.5))
     else:
         ax.set_ylim(0, max(vals) * 1.15 if max(vals) > 0 else 1)
 
@@ -230,17 +235,26 @@ def plot_ge_evolution_line(models_data, title, out_path):
     
     fig, ax = plt.subplots(figsize=(16, 8))
     valid_plots = 0
+    max_x_plotted = PRACTICAL_LIMIT
     
     for i, m in enumerate(models_data):
-        ge = read_ge(m["ge_path"])
+        ge = read_ge(m["ge_path"], max_traces=ANALYTICAL_HORIZON)
         if ge is not None:
             valid_plots += 1
-            bp = m['traces']
             lbl_id = m['id'].replace(chr(10), ' ')
-            lbl = f"{lbl_id} (Break: {bp})" if bp < MAX_TRACES else f"{lbl_id} (> {MAX_TRACES})"
             
-            lw = 2.5 if bp < MAX_TRACES else 1.5
-            alpha = 1.0 if bp < MAX_TRACES else 0.4
+            coords = np.where(ge <= 0.5)[0]
+            if len(coords) > 0:
+                real_bp = coords[0] + 1
+                lbl = f"{lbl_id} (Break: {real_bp})"
+                lw = 2.5
+                alpha = 1.0
+                max_x_plotted = max(max_x_plotted, real_bp + 500) # Estendi asse X un po' oltre il break
+            else:
+                lbl = f"{lbl_id} (Not Breaked)"
+                lw = 1.5
+                alpha = 0.4
+                max_x_plotted = ANALYTICAL_HORIZON
             
             ax.plot(np.arange(1, len(ge)+1), ge, color=COLORS[i % len(COLORS)], linewidth=lw, alpha=alpha, label=lbl)
 
@@ -249,14 +263,15 @@ def plot_ge_evolution_line(models_data, title, out_path):
         return
 
     ax.axhline(0.5, color='red', linestyle='--', linewidth=2, alpha=0.8, label='Break Threshold (GE < 0.5)')
+    ax.axvline(PRACTICAL_LIMIT, color='gray', linestyle=':', linewidth=2, label=f'Practical Auditing Limit ({PRACTICAL_LIMIT})')
     ax.axhline(0, color='black', linewidth=1, alpha=0.3)
     
     ax.set_title(title)
     ax.set_xlabel("Number of Traces")
     ax.set_ylabel("Guessing Entropy")
-    ax.set_ylim(-5, max(130, np.max(ge) + 10) if 'ge' in locals() and ge is not None else 130)
+    ax.set_ylim(-5, 130)
+    ax.set_xlim(0, max_x_plotted)
     
-    # Legend spostata fuori per non coprire il grafico se ci sono 9 linee
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=9)
     plt.tight_layout()
     fig.savefig(out_path, dpi=300)
@@ -267,7 +282,7 @@ def plot_ge_evolution_line(models_data, title, out_path):
 # ==========================================
 if __name__ == "__main__":
     print("========================================")
-    print("Generazione Plot (Ricerca file dinamica - 9 Modelli)")
+    print("Generazione Plot ATmega (Orizzonte Analitico: 6000 Tracce)")
     print("========================================\n")
     
     best_overall_models = []
@@ -304,7 +319,6 @@ if __name__ == "__main__":
         plot_unified_bar(arch_models, "storage", "File Size (MB)", f"{arch} - Model Storage Size", os.path.join(out_storage, f"{arch}_Storage.png"), '#a65628')
         plot_radar_chart(arch_models, f"5D Pareto Analysis: Top {arch} Models", os.path.join(out_pareto, f"{arch}_Radar_Pareto.png"))
 
-
     if best_overall_models:
         print("\nGenerazione Comparison dei Best Models...")
         best_overall_models = calculate_scores(best_overall_models)
@@ -323,4 +337,4 @@ if __name__ == "__main__":
         
         plot_radar_chart(best_overall_models, "Ultimate 5D Pareto: Best Models Comparison", os.path.join(comp_dir, "PARETO", "Ultimate_Radar_Pareto.png"))
 
-    print("\nTutto generato con successo! Ora ci sono 9 barre per grafico.")
+    print("\nTutto generato con successo! Pareto pesato e Tracce analitiche (6000) applicati.")
