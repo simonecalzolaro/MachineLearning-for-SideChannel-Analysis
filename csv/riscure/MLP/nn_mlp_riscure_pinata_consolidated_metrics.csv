@@ -1,0 +1,10 @@
+Target,Config,DataComplexity_Traces,TrainTime_s,TrainRAM_MB,AttackTime_s,AttackRAM_MB,ModelSize_KB
+HW_SO,categorical_out_none,>6000,19222.62,3313.03,17.59,437.63,3158.37
+HW_SO,categorical_out_scalar,>6000,19186.89,2747.85,16.99,403.83,3159.93
+HW_SO,categorical_out_binary,>6000,19165.46,2806.2,16.46,449.93,3170.87
+SBOX_OUT,categorical_out_none,>6000,19603.16,3784.98,13.51,321.64,3547.13
+SBOX_OUT,categorical_out_scalar,503,19625.89,3646.57,12.99,327.92,3548.7
+SBOX_OUT,binary_out_none,268,19121.6,2774.25,14.42,477.79,3156.8
+SBOX_OUT,categorical_out_binary,>6000,19316.9,4325.49,14.0,360.21,3559.63
+SBOX_OUT,binary_out_scalar,1837,19188.88,2832.67,13.58,465.43,3158.37
+SBOX_OUT,binary_out_binary,>6000,18865.23,2795.69,14.62,490.73,3169.3
