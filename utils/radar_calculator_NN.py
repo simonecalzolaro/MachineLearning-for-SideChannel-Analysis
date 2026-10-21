@@ -1,152 +1,120 @@
 import os
 import math
 import csv
-
 from pathlib import Path
+
+# Angolo di un pentagono regolare (72 gradi in radianti)
+sin_72 = math.sin(math.radians(72))
+
+# IDU: Stessi identici parametri di normalizzazione assoluta
+UNIVERSAL_REFERENCE_BOUNDS = {
+    "Traces":     [10.0, 10000.0],    # Tracce (Applicheremo la scala Logaritmica)
+    "TrainTime":  [0.0, 25000.0],     # Fino a ~7 ore di addestramento
+    "AttackTime": [0.0, 30.0],        # Fino a 30 secondi
+    "RAM":        [0.0, 4500.0],      # Fino a 4.5 GB di peak RAM
+    "Storage":    [0.0, 4500.0]       # Fino a 4.5 MB
+}
+
+# Pesi asimmetrici del Framework di Pareto della tesi
+SECTOR_WEIGHTS = [0.6, 0.1, 0.1, 0.1, 0.1]
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 os.chdir(PROJECT_ROOT)
 
-# Definizione della costante trigonometrica per l'angolo tra gli assi di un pentagono (72 gradi)
-sin_72 = math.sin(math.radians(72))
+CSV_PATH = os.path.join(PROJECT_ROOT, "csv", "atmega", "MLP", "nn_mlp_atmega_consolidated_metrics.csv")
 
-# Percorso relativo per il file CSV generato precedentemente
-CSV_PATH = os.path.join("csv", "atmega", "MLP_PRE", "nn_mlp_pre_atmega_consolidated_metrics.csv")
-
-# 1. DATI REALI DI FALLBACK (Sincronizzati con i 5 assi: [Traces, TrainTime (s), AttackTime (s), RAM (MB), Storage (KB)])
-fallback_data = {
-    "BTA:PCA_LDA":   [12, 17.877785384212622, 11.33925576438196, 2217.11328125, 24.576], # Ripristinato il valore 12 (Traces)
-    "Standard MLP": [268, 19121.6, 14.42, 2774.25, 3156.8],                           # Corretto ordine RAM/AttackTime
-    "CNN":          [32, 22062.13, 14.08, 2779.7, 322.72],                             # Corretto ordine RAM/AttackTime
-    "Custom MLP":   [10, 2645.0, 20.9, 3578.9, 378.0]                                  # Coerente con la configurazione
-}
-
-def load_metrics_from_csv(csv_path):
+def normalize_value(val, key):
     """
-    Tenta di caricare i dati dal CSV consolidato. Se non disponibile,
-    esegue il fallback sul dizionario statico preimpostato.
+    Normalizzazione Ibrida: Logaritmica per le Tracce, Lineare per le Risorse Hardware.
     """
-    if not os.path.exists(csv_path):
-        print(f"[-] CSV non trovato in '{csv_path}'. Utilizzo dei dati reali di fallback...")
-        return fallback_data
-    
-    data = {}
-    try:
-        with open(csv_path, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                target = row["Target"]
-                config = row["Config"]
-                key = f"{target}_{config}"
-                
-                # Converte i valori gestendo eventuali anomalie 'N/A' con massimali di sicurezza
-                try:
-                    traces = float(row["DataComplexity_Traces"]) if row["DataComplexity_Traces"] != "N/A" else 1000.0
-                    train_time = float(row["TrainTime_s"]) if row["TrainTime_s"] != "N/A" else 20000.0
-                    attack_time = float(row["AttackTime_s"]) if row["AttackTime_s"] != "N/A" else 20.0
-                    train_ram = float(row["TrainRAM_MB"]) if row["TrainRAM_MB"] != "N/A" else 2000.0
-                    storage = float(row["ModelSize_KB"]) if row["ModelSize_KB"] != "N/A" else 4000.0
-                    
-                    data[key] = [traces, train_time, attack_time, train_ram, storage]
-                except ValueError:
-                    continue
-    except Exception as e:
-        print(f"[-] Errore nella lettura del CSV ({e}). Avvio fallback dinamico...")
-        return fallback_data
-    return data
+    b_min, b_max = UNIVERSAL_REFERENCE_BOUNDS[key]
+    val = max(b_min, min(b_max, val))  # Clip di sicurezza
 
-def normalize_metrics(raw_data):
-    """
-    Normalizza linearmente ciascuna metrica in modo indipendente nell'intervallo [0.1, 1.0].
-    """
-    metrics_keys = ["Traces", "TrainTime", "AttackTime", "RAM", "Storage"]
-    normalized_by_metric = {}
-    
-    # Estraiamo le colonne per normalizzarle ciascuna sul proprio asse
-    for col_idx, metric_name in enumerate(metrics_keys):
-        col_values = [raw_data[model][col_idx] for model in raw_data]
-        min_v = min(col_values)
-        max_v = max(col_values)
-        
-        if max_v == min_v:
-            normalized_by_metric[metric_name] = [0.1 for _ in col_values]
-        else:
-            normalized_by_metric[metric_name] = [
-                0.1 + 0.9 * (v - min_v) / (max_v - min_v) for v in col_values
-            ]
-
-    # Ricostruiamo la struttura per ciascun modello
-    normalized_models = {}
-    for row_idx, model in enumerate(raw_data.keys()):
-        normalized_models[model] = [
-            normalized_by_metric["Traces"][row_idx],
-            normalized_by_metric["TrainTime"][row_idx],
-            normalized_by_metric["AttackTime"][row_idx],
-            normalized_by_metric["RAM"][row_idx],
-            normalized_by_metric["Storage"][row_idx]
-        ]
-            
-    return normalized_models
+    if key == "Traces":
+        # Normalizzazione Logaritmica in Base 10 per evidenziare le differenze sui piccoli numeri (es. 12 vs 32)
+        log_val = math.log10(val)
+        log_min = math.log10(b_min)
+        log_max = math.log10(b_max)
+        return 0.1 + 0.9 * (log_val - log_min) / (log_max - log_min)
+    else:
+        # Normalizzazione Lineare per tempo e memoria
+        return 0.1 + 0.9 * (val - b_min) / (b_max - b_min)
 
 def calculate_omega(r, w):
     """
-    Calcola l'area pesata del poligono di inefficienza scomponendolo in 5 triangoli.
+    Calcola l'area pesata del pentagono di inefficienza Omega.
     """
     total_area = 0.0
     for i in range(5):
         r_curr = r[i]
         r_next = r[(i + 1) % 5]
-        
-        # Area geometrica del singolo spicchio polare
         sector_area = 0.5 * r_curr * r_next * sin_72
-        # Moltiplicazione per il rispettivo peso asimmetrico
         total_area += w[i] * sector_area
     return total_area
 
-def main():
-    print("="*80)
-    print("   CALCOLO INEFFICIENZA GLOBALE OMEGA (PENTAGONO PARETO RADAR)")
-    print("="*80)
-    
-    # Caricamento ed elaborazione dati
-    raw_data = load_metrics_from_csv(CSV_PATH)
-    normalized_data = normalize_metrics(raw_data)
-    
-    # Distribuzione asimmetrica dei pesi: 60% sul canale primario (Traces), 10% sui restanti 4
-    weights = [0.6, 0.1, 0.1, 0.1, 0.1]
-    
-    # Modelli di interesse per la tesi (sia in modalità CSV che in modalità Fallback)
-    allowed_models = [
-        "SBOX_OUT_categorical_out_none", "SBOX_OUT_binary_out_none",
-        "SBOX_OUT_binary_out_scalar", "SBOX_OUT_binary_out_binary",
-        "SBOX_OUT_categorical_out_scalar", "SBOX_OUT_categorical_out_binary"
+print("="*85)
+print("   ELABORAZIONE DINAMICA E UNIVERSALE PARETO OMEGA - RETI NEURALI (CNN)")
+print("   [!] Attiva Normalizzazione Logaritmica sull'asse delle Tracce")
+print("="*85)
 
+if not os.path.exists(CSV_PATH):
+    print(f"[-] Errore: Il file non esiste nel percorso: {CSV_PATH}")
+    os.sys.exit(1)
+
+try:
+    with open(CSV_PATH, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        color_idx = 1
         
-    ]
-    
-    color_index = 1
-    for model, r in normalized_data.items():
-        if model not in allowed_models:
-            continue
+        for row in reader:
+            target = row["Target"]
+            config = row["Config"]
+            model_key = f"{target}_{config}"
             
-        omega = calculate_omega(r, weights)
-        print(f"\nModello: {model}")
-        print(f"  Vettore r_i normalizzato: {[round(x, 3) for x in r]}")
-        print(f"  Area Pesata Inefficienza \\Omega: {omega:.4f}")
-        
-        # Generazione coordinate TikZ centrate su scala 4.0
-        tikz_coords = []
-        for i in range(5):
-            angle = 90 - i * 72
-            tikz_coords.append(f"({angle}:{r[i]:.2f}*4)")
-        
-        # Generiamo due opzioni di stampa per facilitare l'importazione nel documento LaTeX
-        clean_model_name = model.replace(":", "").replace(" ", "_").replace("+", "_")
-        print(f"  Codice TikZ (Colori Semantici):\n  \\draw[color{clean_model_name}, very thick, fill=color{clean_model_name}, fill opacity=0.10] " + " -- ".join(tikz_coords) + " -- cycle;")
-        print(f"  Codice TikZ (Colori Indicizzati per Overleaf):\n  \\draw[color{color_index}, very thick, fill=color{color_index}, fill opacity=0.10] " + " -- ".join(tikz_coords) + " -- cycle;")
-        
-        color_index = (color_index % 6) + 1  # Cicla tra i 6 colori principali del preambolo LaTeX
-        
-    print("\n" + "="*80)
+            try:
+                traces_raw = row["DataComplexity_Traces"].strip()
+                if traces_raw == "N/A" or traces_raw.startswith(">"):
+                    traces = 10000.0
+                else:
+                    traces = float(traces_raw)
+                    
+                train_time = float(row["TrainTime_s"]) if row["TrainTime_s"] != "N/A" else 25000.0
+                attack_time = float(row["AttackTime_s"]) if row["AttackTime_s"] != "N/A" else 30.0
+                ram = float(row["TrainRAM_MB"]) if row["TrainRAM_MB"] != "N/A" else 4500.0
+                storage = float(row["ModelSize_KB"]) if row["ModelSize_KB"] != "N/A" else 4500.0
+                
+            except ValueError as e:
+                continue
+                
+            r = [
+                normalize_value(traces, "Traces"),
+                normalize_value(train_time, "TrainTime"),
+                normalize_value(attack_time, "AttackTime"),
+                normalize_value(ram, "RAM"),
+                normalize_value(storage, "Storage")
+            ]
+            
+            omega = calculate_omega(r, SECTOR_WEIGHTS)
+            
+            print(f"\nModello: {model_key}")
+            print(f"  Dati Reali Estratti: Traces={traces}, TrainTime={train_time:.2f}s, AttackTime={attack_time:.2f}s, RAM={ram:.2f}MB, Storage={storage:.2f}KB")
+            print(f"  Vettore r_i Norm:    {[round(x, 3) for x in r]}")
+            print(f"  Inefficienza Omega:  \033[1;32m{omega:.4f}\033[0m")
+            
+            tikz_coords = []
+            for i in range(5):
+                angle = 90 - i * 72
+                tikz_coords.append(f"({angle}:{r[i]:.2f}*4)")
+                
+            clean_model_name = model_key.replace(":", "").replace("-", "_").replace(" ", "_")
+            print(f"  Codice TikZ (Colori Semantici):")
+            print(f"    \\draw[color{clean_model_name}, very thick, fill=color{clean_model_name}, fill opacity=0.10] " + " -- ".join(tikz_coords) + " -- cycle;")
+            print(f"  Codice TikZ (Colori Indicizzati per Overleaf):")
+            print(f"    \\draw[color{color_idx}, very thick, fill=color{color_idx}, fill opacity=0.10] " + " -- ".join(tikz_coords) + " -- cycle;")
+            
+            color_idx = (color_idx % 8) + 1
 
-if __name__ == "__main__":
-    main()
+except Exception as e:
+    print(f"[-] Errore generale nella lettura del CSV: {e}")
+
+print("="*85 + "\n")

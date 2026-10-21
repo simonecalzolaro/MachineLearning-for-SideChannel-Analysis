@@ -7,15 +7,15 @@ os.chdir(PROJECT_ROOT)
 
 # Lista dei percorsi forniti (relativi alla radice del progetto)
 paths = [
-    "NN/MLP_PRE/atmega/ATTACK/HW_SO/fixed_key_categorical_out_binary_ptx/HW_SO_ptx_binary_ge.csv",
-    "NN/MLP_PRE/atmega/ATTACK/HW_SO/fixed_key_categorical_out_none_ptx/HW_SO_ge.csv",
-    "NN/MLP_PRE/atmega/ATTACK/HW_SO/fixed_key_categorical_out_scalar_ptx/HW_SO_ptx_scalar_ge.csv",
-    "NN/MLP_PRE/atmega/ATTACK/SBOX_OUT/fixed_key_binary_out_binary_ptx/SBOX_OUT_ptx_binary_out_binary_ge.csv",
-    "NN/MLP_PRE/atmega/ATTACK/SBOX_OUT/fixed_key_binary_out_none_ptx/SBOX_OUT_out_binary_ge.csv",
-    "NN/MLP_PRE/atmega/ATTACK/SBOX_OUT/fixed_key_binary_out_scalar_ptx/SBOX_OUT_ptx_scalar_out_binary_ge.csv",
-    "NN/MLP_PRE/atmega/ATTACK/SBOX_OUT/fixed_key_categorical_out_binary_ptx/SBOX_OUT_ptx_binary_ge.csv",
-    "NN/MLP_PRE/atmega/ATTACK/SBOX_OUT/fixed_key_categorical_out_none_ptx/SBOX_OUT_ge.csv",
-    "NN/MLP_PRE/atmega/ATTACK/SBOX_OUT/fixed_key_categorical_out_scalar_ptx/SBOX_OUT_ptx_scalar_ge.csv"
+    "NN/CNN_ZAID/atmega/ATTACK/HW_SO/fixed_key_categorical_out_binary_ptx/HW_SO_ptx_binary_ge.csv",
+    "NN/CNN_ZAID/atmega/ATTACK/HW_SO/fixed_key_categorical_out_none_ptx/HW_SO_ge.csv",
+    "NN/CNN_ZAID/atmega/ATTACK/HW_SO/fixed_key_categorical_out_scalar_ptx/HW_SO_ptx_scalar_ge.csv",
+    "NN/CNN_ZAID/atmega/ATTACK/SBOX_OUT/fixed_key_binary_out_binary_ptx/SBOX_OUT_ptx_binary_out_binary_ge.csv",
+    "NN/CNN_ZAID/atmega/ATTACK/SBOX_OUT/fixed_key_binary_out_none_ptx/SBOX_OUT_out_binary_ge.csv",
+    "NN/CNN_ZAID/atmega/ATTACK/SBOX_OUT/fixed_key_binary_out_scalar_ptx/SBOX_OUT_ptx_scalar_out_binary_ge.csv",
+    "NN/CNN_ZAID/atmega/ATTACK/SBOX_OUT/fixed_key_categorical_out_binary_ptx/SBOX_OUT_ptx_binary_ge.csv",
+    "NN/CNN_ZAID/atmega/ATTACK/SBOX_OUT/fixed_key_categorical_out_none_ptx/SBOX_OUT_ge.csv",
+    "NN/CNN_ZAID/atmega/ATTACK/SBOX_OUT/fixed_key_categorical_out_scalar_ptx/SBOX_OUT_ptx_scalar_ge.csv"
 ]
 
 # Impostiamo il fattore di sottocampionamento (prendiamo 1 punto ogni 10)

@@ -382,6 +382,7 @@ def riscure_pinata_metrics():
             
             metrics = {}
 
+            #COLD START PREVENTING WARMUP
             print("Calculating Training Time...")
             _, _, _, _, _ = training(f_c, X_train, X_test, ptxs, KEY, target_byte, model,SBOX_RISCURE)
             _, _, _, _, _ = training(f_c, X_train, X_test, ptxs, KEY, target_byte, model,SBOX_RISCURE)

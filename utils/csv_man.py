@@ -6,7 +6,7 @@ import csv
 # CONFIGURAZIONE UTENTE: SELEZIONA PLATFORMA E ARCHITETTURA QUI
 # ============================================================================
 PLATFORM = "atmega"  # Opzioni: "riscure_pinata", "atmega"
-ARCH = "MLP_PRE"                # Opzioni: "MLP", "CNN"
+ARCH = "CNN_ZAID"                # Opzioni: "MLP", "CNN"
 
 from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

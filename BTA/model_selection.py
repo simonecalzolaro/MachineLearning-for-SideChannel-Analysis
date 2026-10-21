@@ -138,7 +138,7 @@ def atmega_selection():
             X_test = sc.transform(X_test)
 
             if t == "PCA":
-                EXP = np.arange(10, 100, 5)
+                EXP = np.arange(10, 200, 5)
                 T_full, test_T_full, _ = fs.PCA(X_train, X_test, max(EXP))
                 for n_comp in EXP:
                     templates = profiling_gpu(T_full[:, :n_comp], ptxs, KEY, target_byte, "SBOX_OUT", SBOX_ATMEGA)
@@ -156,7 +156,7 @@ def atmega_selection():
                     if cp < best["Traces_to_GE0"]: best.update({"Traces_to_GE0": cp, "lda_components": n_comp, "delta": delta, "operation": op})
 
             elif t == "PCA_LDA":
-                EXP_PCA = np.arange(10, 100, 10)
+                EXP_PCA = np.arange(10, 200, 10)
                 EXP_LDA = np.arange(1, 15, 2)
                 T_pca_f, test_T_pca_f, _ = fs.PCA(X_train, X_test, max(EXP_PCA))
                 for n_pca in EXP_PCA:
@@ -169,7 +169,7 @@ def atmega_selection():
                         if cp < best["Traces_to_GE0"]: best.update({"Traces_to_GE0": cp, "pca_components": n_pca, "lda_components": n_lda, "delta": delta, "operation": op})
 
             elif t == "PCA_HW":
-                EXP = np.arange(10, 100, 10)
+                EXP = np.arange(10, 200, 10)
                 T_full, test_T_full, _ = fs.PCA_HW(X_train, X_test, max(EXP))
                 for n_comp in EXP:
                     templates = profiling_gpu(T_full[:, :n_comp], ptxs, KEY, target_byte, "HW_SO", SBOX_ATMEGA)
@@ -187,7 +187,7 @@ def atmega_selection():
                     if cp < best["Traces_to_GE0"]: best.update({"Traces_to_GE0": cp, "lda_components": n_comp, "delta": delta, "operation": op})
 
             elif t == "PCA_LDA_HW":
-                EXP_PCA = np.arange(10, 100, 10)
+                EXP_PCA = np.arange(10, 200, 10)
                 EXP_LDA = np.arange(1, 9, 1)
                 T_pca_f, test_T_pca_f, _ = fs.PCA_HW(X_train, X_test, max(EXP_PCA))
                 for n_pca in EXP_PCA:
@@ -248,7 +248,7 @@ def riscure_selection():
             X_train, X_test = process_traces_vectorized(TRXS, X_TEST, delta, op)
 
             if t == "PCA":
-                EXP = np.arange(10, 100, 5)
+                EXP = np.arange(10, 200, 5)
                 T_full, test_T_full, _ = fs.PCA(X_train, X_test, max(EXP))
                 for n_comp in EXP:
                     templates = profiling_gpu(T_full[:, :n_comp], ptxs, KEY, target_byte, "SBOX_OUT", SBOX_RISCURE)
@@ -266,7 +266,7 @@ def riscure_selection():
                     if cp < best["Traces_to_GE0"]: best.update({"Traces_to_GE0": cp, "lda_components": n_comp, "delta": delta, "operation": op})
 
             elif t == "PCA_LDA":
-                EXP_PCA = np.arange(10, 100, 10)
+                EXP_PCA = np.arange(10, 200, 10)
                 EXP_LDA = np.arange(1, 15, 2)
                 T_pca_f, test_T_pca_f, _ = fs.PCA(X_train, X_test, max(EXP_PCA))
                 for n_pca in EXP_PCA:
@@ -279,7 +279,7 @@ def riscure_selection():
                         if cp < best["Traces_to_GE0"]: best.update({"Traces_to_GE0": cp, "pca_components": n_pca, "lda_components": n_lda, "delta": delta, "operation": op})
 
             elif t == "PCA_HW":
-                EXP = np.arange(10, 100, 10)
+                EXP = np.arange(10, 200, 10)
                 T_full, test_T_full, _ = fs.PCA_HW(X_train, X_test, max(EXP))
                 for n_comp in EXP:
                     templates = profiling_gpu(T_full[:, :n_comp], ptxs, KEY, target_byte, "HW_SO", SBOX_RISCURE)
@@ -297,7 +297,7 @@ def riscure_selection():
                     if cp < best["Traces_to_GE0"]: best.update({"Traces_to_GE0": cp, "lda_components": n_comp, "delta": delta, "operation": op})
 
             elif t == "PCA_LDA_HW":
-                EXP_PCA = np.arange(10, 100, 10)
+                EXP_PCA = np.arange(10, 200, 10)
                 EXP_LDA = np.arange(1, 9, 1)
                 T_pca_f, test_T_pca_f, _ = fs.PCA_HW(X_train, X_test, max(EXP_PCA))
                 for n_pca in EXP_PCA:

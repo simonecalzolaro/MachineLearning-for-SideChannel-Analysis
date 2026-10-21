@@ -1,74 +1,110 @@
+import os
 import math
+import json
+from pathlib import Path
 
-# 1. Definizione dell'angolo costante tra gli assi (72 gradi in radianti)
-theta_rad = math.radians(72)
-sin_72 = math.sin(theta_rad)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+os.chdir(PROJECT_ROOT)
 
-# 2. Inserimento dei dati reali estratti dai tuoi JSON (Fronte Riscure Piñata)
-# Formato: [Traces, TrainingTime, AttackTime, PeakRAM, Storage]
-raw_data = {
-    "PCA":        [1647, 0.8730417949846014,22.518840874615126,6.05390625,220.0],
-    #LDA":        [11, 8.85230990019627,19.49929721080698,1591.14921875,144.0],
-    "PCA_LDA":    [6257, 1.1700923322001473,18.400790582573972,2635.27421875,144.0],
-    "PCA_HW":     [4353, 0.5557052950141952,18.21278005943168,2607.04296875,7.73],
-    #"LDA_HW":     [22, 8.157814306207001,17.933392972801812,4183.375,5.06],
-    "PCA_LDA_HW": [9230, 0.7189348165877163,17.837776283966377,2646.64453125,5.06]
+sin_72 = math.sin(math.radians(72))
+
+UNIVERSAL_REFERENCE_BOUNDS = {
+    "Traces":     [10.0, 10000.0],    
+    "TrainTime":  [0.0, 25000.0],     
+    "AttackTime": [0.0, 30.0],        
+    "RAM":        [0.0, 4500.0],      
+    "Storage":    [0.0, 4500.0]       
 }
 
-# 3. Funzione per la normalizzazione lineare nell'intervallo [0.1, 1.0]
-def normalize_metric(values):
-    min_v = min(values)
-    max_v = max(values)
-    # Se i valori sono tutti uguali, evita la divisione per zero mappando a 0.1
-    if max_v == min_v:
-        return [0.1 for _ in values]
-    return [0.1 + 0.9 * (v - min_v) / (max_v - min_v) for v in values]
+SECTOR_WEIGHTS = [0.6, 0.1, 0.1, 0.1, 0.1]
 
-# Estraiamo le colonne per normalizzarle in modo indipendente
-metrics_keys = ["Traces", "TrainTime", "AttackTime", "RAM", "Storage"]
-normalized_by_metric = {}
+bta_paths = {
+    "PCA":        "BTA/metrics/atmega/PCA_SUM_metrics.json",
+    "PCA_LDA":    "BTA/metrics/atmega/PCA_LDA_SUM_metrics.json",
+    "PCA_HW":     "BTA/metrics/atmega/PCA_HW_SUM_metrics.json",
+    "PCA_LDA_HW": "BTA/metrics/atmega/PCA_LDA_HW_SUM_metrics.json",
+    "LDA":        "BTA/metrics/atmega/LDA_SUM_metrics.json",
+    "LDA_HW":     "BTA/metrics/atmega/LDA_HW_SUM_metrics.json"
+}
 
-for col_idx, metric_name in enumerate(metrics_keys):
-    col_values = [raw_data[model][col_idx] for model in raw_data]
-    normalized_by_metric[metric_name] = normalize_metric(col_values)
+def normalize_value(val, key):
+    """
+    Normalizzazione Ibrida: Logaritmica per le Traces, Lineare per il resto.
+    """
+    b_min, b_max = UNIVERSAL_REFERENCE_BOUNDS[key]
+    val = max(b_min, min(b_max, val))
+    
+    if key == "Traces":
+        log_val = math.log10(val)
+        log_min = math.log10(b_min)
+        log_max = math.log10(b_max)
+        return 0.1 + 0.9 * (log_val - log_min) / (log_max - log_min)
+    else:
+        return 0.1 + 0.9 * (val - b_min) / (b_max - b_min)
 
-# Ricostruiamo il dizionario dei vettori normalizzati per ciascun modello
-normalized_models = {}
-for row_idx, model in enumerate(raw_data.keys()):
-    normalized_models[model] = [
-        normalized_by_metric["Traces"][row_idx],
-        normalized_by_metric["TrainTime"][row_idx],
-        normalized_by_metric["AttackTime"][row_idx],
-        normalized_by_metric["RAM"][row_idx],
-        normalized_by_metric["Storage"][row_idx]
-    ]
-
-# 4. Funzione per calcolare l'area pesata Omega
 def calculate_omega(r, w):
-    # r è la lista dei 5 raggi normalizzati del modello [r_1, r_2, r_3, r_4, r_5]
-    # w è il vettore dei pesi dei settori [w_1, w_2, w_3, w_4, w_5]
     total_area = 0.0
     for i in range(5):
         r_curr = r[i]
-        r_next = r[(i + 1) % 5]  # L'indice 5 fa il wrap-around all'indice 0 (ciclico)
-        
-        # Area geometrica del singolo settore triangolare
+        r_next = r[(i + 1) % 5]
         sector_area = 0.5 * r_curr * r_next * sin_72
-        # Moltiplicazione per il rispettivo peso asimmetrico
-        weighted_sector = w[i] * sector_area
-        total_area += weighted_sector
+        total_area += w[i] * sector_area
     return total_area
 
-# Pesi asimmetrici richiesti: 60% per il settore primario e 10% per i restanti 4
-sector_weights = [0.6, 0.1, 0.1, 0.1, 0.1]
+print("="*85)
+print("   ELABORAZIONE DINAMICA E UNIVERSALE PARETO OMEGA - MODELLI BTA")
+print("   [!] Attiva Normalizzazione Logaritmica sull'asse delle Tracce")
+print("="*85)
 
-# 5. Output dei risultati e codice LaTeX per i poligoni
-print("--- VETTORI NORMALIZZATI E VALORI DI INEFFICIENZA GLOBALE ---")
-for model, r in normalized_models.items():
-    omega = calculate_omega(r, sector_weights)
-    print(f"\nModello: {model}")
-    print(f"  Vettore r_i: {['{:.3f}'.format(val) for val in r]}")
-    print(f"  Area Pesata \Omega: {omega:.4f}")
-    # Genera automaticamente la stringa TikZ pronta per Overleaf
-    tikz_points = " -- ".join([f"({90 - i*72}:{r[i]:.2f}*4)" for i in range(5)])
-    print(f"  Codice TikZ: \\draw[color{model}, very thick, fill=color{model}, fill opacity=0.15] {tikz_points} -- cycle;")
+for model_name, file_rel_path in bta_paths.items():
+    file_path = os.path.join(PROJECT_ROOT, file_rel_path)
+    if not os.path.exists(file_path):
+        print(f"[-] Errore: File non trovato in {file_rel_path} -> Salto modello.")
+        continue
+        
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            m_data = json.load(f)
+            
+        ge_curve = m_data.get("GE_curve", [])
+        traces = 10000.0  
+        START_OFFSET = 10
+        for idx, val in enumerate(ge_curve):
+            if val < 0.5:
+                traces = float(idx + START_OFFSET)
+                break
+                
+        train_time = float(m_data.get("Training_time", 0.0))
+        attack_time = float(m_data.get("Attack_time", 0.0))
+        ram = float(m_data.get("Training_RAM_usage", 0.0))
+        
+        storage_bytes = float(m_data.get("Storage_size", 0.0))
+        storage_kb = storage_bytes / 1024.0
+        
+        r = [
+            normalize_value(traces, "Traces"),
+            normalize_value(train_time, "TrainTime"),
+            normalize_value(attack_time, "AttackTime"),
+            normalize_value(ram, "RAM"),
+            normalize_value(storage_kb, "Storage")
+        ]
+        
+        omega = calculate_omega(r, SECTOR_WEIGHTS)
+        
+        print(f"\nModello: {model_name}")
+        print(f"  Dati Reali Estratti: Traces={traces}, TrainTime={train_time:.2f}s, AttackTime={attack_time:.2f}s, RAM={ram:.2f}MB, Storage={storage_kb:.2f}KB")
+        print(f"  Vettore r_i Norm:    {[round(x, 3) for x in r]}")
+        print(f"  Inefficienza Omega:  \033[1;32m{omega:.4f}\033[0m")
+        
+        tikz_coords = []
+        for i in range(5):
+            angle = 90 - i * 72
+            tikz_coords.append(f"({angle}:{r[i]:.2f}*4)")
+            
+        print(f"  Codice TikZ:")
+        print(f"    \\draw[color{model_name}, very thick, fill=color{model_name}, fill opacity=0.10] " + " -- ".join(tikz_coords) + " -- cycle;")
+        
+    except Exception as e:
+        print(f"[-] Errore nell'elaborazione del file {file_rel_path}: {e}")
+
+print("="*85 + "\n")
